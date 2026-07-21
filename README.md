@@ -64,6 +64,24 @@ basis was almost perfect.
 
 Full measurements and caveats are in [docs/RESULTS.md](docs/RESULTS.md).
 
+## v3: toward sequence models
+
+Version 3 contains two new, separate falsification experiments:
+
+- **Compact Causal QSBF (CQSBF):** a compact learned quadratic sketch and an
+  online fixed-rank shared basis. It is causal, position-aware, uses a fixed
+  generation state, and does not construct an `N x N` token matrix. It is
+  trained beside ordinary causal attention and causal linear attention on
+  associative recall, selective copy, and induction.
+- **Reliable VDCF (R-VDCF):** an `O(N)` local/dilated/hash factor topology with
+  persistent trust, a learned reliability gate, capped influence, aging,
+  exploration, and incremental violation refresh. It compares reliable sparse,
+  naive sparse, and dense execution and counts their actual factor work.
+
+These experiments implement the proposed improvements; no v3 result is claimed
+until the scripts are run. Design details and interpretation rules are in
+[docs/V3_EXPERIMENTS.md](docs/V3_EXPERIMENTS.md).
+
 ## Run
 
 Requirements:
@@ -71,23 +89,30 @@ Requirements:
 - Python 3.10+
 - PyTorch 2.x
 
-Install PyTorch using the build appropriate for your CUDA driver, then run:
+Install PyTorch using the build appropriate for your CUDA driver. Run the new
+CQSBF experiment:
 
 ```bash
-python experiments/v2/two_architecture_experiments_v2.py \
-  --experiment all --device cuda
+python experiments/v3/compact_causal_qsbf_experiment.py \
+  --models all --device cuda --amp
 ```
 
-A quick correctness run:
+Run the reliable VDCF experiment:
 
 ```bash
-python experiments/v2/two_architecture_experiments_v2.py \
-  --experiment all --device cpu --smoke
+python experiments/v3/reliable_vdcf_experiment.py \
+  --device cuda --amp
 ```
 
-Outputs are written to `two_architecture_runs_v2/` by default. Use
-`--output-dir` to change this. The first prototype is retained under
-`experiments/v1/` for comparison; v2 is the current implementation.
+Quick correctness runs:
+
+```bash
+python experiments/v3/compact_causal_qsbf_experiment.py --smoke --device cuda
+python experiments/v3/reliable_vdcf_experiment.py --smoke --device cuda
+```
+
+The original feasibility studies remain under `experiments/v1/` and
+`experiments/v2/`. Generated results and checkpoints are ignored by Git.
 
 ## Research status and novelty
 
@@ -111,16 +136,14 @@ literature review and direct experimental comparisons. See
 
 ## Next milestones
 
-1. Reproduce every result over at least 10 seeds with confidence intervals.
-2. Benchmark equal compute budgets, wall time, memory, and scaling rather than
-   accuracy alone.
-3. Fix VDCF's corrupt-factor starvation with learned reliability and aging.
-4. Turn QSBF into a stable one-pass or adaptively halted operator and replace
-   the full quadratic lift with a compact approximation.
-5. Compare against BP/RBP/GNN/Transformer for VDCF and Deep Sets/covariance
-   pooling/Set Transformer for QSBF.
-6. Only after synthetic falsification tests, move to real constraint and set
-   benchmarks.
+1. Run the two v3 smoke tests and then their full single-seed suites.
+2. Use the v3 measurements to optimize the failed mechanism rather than repeat
+   unchanged runs: CQSBF basis/sketch capacity or R-VDCF trust/scheduler policy.
+3. Move CQSBF from synthetic language-like tasks to a tiny next-token corpus
+   only if it competes with attention on recall, copy, and induction.
+4. Replace R-VDCF's global scalar top-k scan with a true heap/bucket queue if
+   sparse factor evaluations produce an accuracy/compute advantage.
+5. Build the hybrid block only after both improved mechanisms pass separately.
 
 The detailed sequence and pass/fail criteria are in
 [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -129,7 +152,8 @@ The detailed sequence and pass/fail criteria are in
 
 ```text
 experiments/v1/    Original feasibility prototype
-experiments/v2/    Current architecture implementations and evaluations
+experiments/v2/    Matched-moment and sparse-factor feasibility tests
+experiments/v3/    Compact causal QSBF and reliable event-driven VDCF
 docs/              Architecture, novelty, results, and roadmap notes
 results/           Machine-readable recorded summary
 ```
