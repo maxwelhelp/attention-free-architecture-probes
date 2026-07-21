@@ -3,6 +3,22 @@
 The objective is not to collect attractive accuracies. It is to try to falsify
 each claimed advantage as cheaply as possible.
 
+## Current implementation status
+
+Version 3 now implements the first optimization pass rather than repeating v2
+unchanged:
+
+- CQSBF replaces the full quadratic lift and eigendecomposition with compact
+  learned multiplicative features and a causal online low-rank basis. It adds
+  attention and linear-attention controls plus language-like memory tasks.
+- R-VDCF adds persistent/learned reliability, capped influence, aging,
+  exploration, an `O(N)` factor topology, and local cached-priority refresh.
+  It measures learned factor executions separately from priority scans.
+
+The immediate gate is running these two programs and improving whichever
+specific mechanism fails. Multi-seed confirmation remains necessary before a
+paper-level statistical claim, but it is not the next engineering step.
+
 ## Stage 0 — reproducibility harness
 
 Deliverables:
