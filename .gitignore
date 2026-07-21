@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pt
+*.pth
+*.ckpt
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+two_architecture_runs/
+two_architecture_runs_v2/
+results/generated/
