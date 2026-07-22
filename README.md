@@ -1,171 +1,87 @@
-# Attention-Free Architecture Probes
+# R-VDCF
 
-Two executable research probes for global information exchange without a
-Transformer block, self-attention, recurrence, or a conventional stack of GNN
-message-passing layers.
+**Reliable Event-Driven Violation-Driven Constraint Field** is an experimental
+architecture for iterative inference on sparse factor graphs. Instead of
+updating every relation at every step, it measures constraint violations,
+estimates factor reliability, and executes learned local corrections only for
+the most useful factors.
 
-This repository tests a specific research question:
+[Русская версия](README_RU.md) · [Architecture](ARCHITECTURE.md) ·
+[Results](RESULTS.md) · [Raw JSON](results/results.json)
 
-> Can a mechanism currently used as a correction, scheduler, or pooling
-> operation become the organizing principle of an entire architecture?
+## What this repository demonstrates
 
-The answer is not established by these small synthetic experiments. The
-results do show that both proposed mechanisms are computationally real and
-worth testing under stronger baselines.
+R-VDCF is a standalone inference architecture when the problem is already
+represented as variables and sparse constraints. It is not merely an auxiliary
+loss attached to a Transformer: in this experiment, the factor scheduler and
+local correction rule are the complete communication mechanism.
 
-## The two probes
+It is also **not yet a general replacement for attention or a Transformer**.
+Attention discovers content-dependent interactions between tokens; R-VDCF
+currently assumes that the factor graph is supplied. Constructing useful
+language factors without attention remains an open problem.
 
-### 1. Violation-Driven Constraint Field (VDCF)
+At each iteration R-VDCF:
 
-Each variable stores a categorical logit state. Constraint factors measure
-their current violation, but only the most violated fraction is executed at
-each cycle. A shared learned local rule converts selected violations into state
-corrections.
+1. measures the current violation of each factor;
+2. estimates persistent trust from runtime behavior;
+3. selects a small active set using violation, trust, aging, and exploration;
+4. applies a capped learned correction to the incident variables;
+5. refreshes affected local state and repeats.
 
-```text
-state -> measure factor violations -> select top-k -> local corrections -> state
-```
+## Current result
 
-There is no all-pairs token interaction. Communication occurs only through an
-explicit factor field, and computation is conditional on the current error.
+One model was trained only on graphs with 64 nodes and evaluated without
+retraining on 64, 256, and 1,024 nodes. With 10% corrupted constraints:
 
-### 2. Quadratic Shared-Basis Field (QSBF)
+| Nodes | R-VDCF | Naive sparse | Dense |
+|---:|---:|---:|---:|
+| 64 | **0.8964** | 0.8192 | 0.9330 |
+| 256 | **0.8856** | 0.7966 | 0.9185 |
+| 1,024 | **0.8843** | 0.7870 | 0.9161 |
 
-Each element is lifted with a symmetric outer product. The set builds a shared
-second-moment matrix in the lifted space, extracts a spectral basis, and lets
-each element update itself from its own projection and residual relative to
-that basis.
+R-VDCF used about **10.2% of the learned factor evaluations** required by the
+dense mode and consistently beat an equally sparse scheduler without learned
+reliability. The dense mode retained higher accuracy under noise.
 
-```text
-x_i -> phi(x_i)=vech(x_i x_i^T)
-     -> global lifted moment -> eigenspace B
-     -> local projection/residual -> local update
-```
-
-Elements never query or attend to other individual elements. Their common
-communication channel is a global high-order geometric object.
-
-## What v2 currently demonstrates
-
-| Probe | Strongest observed result | Important failure |
-|---|---:|---|
-| VDCF | 96 variables: 1.000 final unknown accuracy using only 25% of factors per cycle | Corrupt high-violation factors can monopolize the compute budget |
-| QSBF | 128 elements, zero noise: 0.999987 accuracy while an independent model scores 0.500586 and a raw linear basis scores 0.496315 | Repeated updates degrade sharply under unseen high noise |
-
-For VDCF, reaching 99% accuracy required about 10.25 full-factor-sweep
-equivalents with sparse execution versus 31 sweeps for dense execution in the
-recorded run. This is roughly a 3x reduction in factor evaluations, not yet a
-3x end-to-end speed claim.
-
-For QSBF, the zero-noise matched-moment control is the central result: the raw
-class covariance gap was approximately `1.36e-8`, so a linear shared basis and
-an independent element classifier were at chance, while the quadratic shared
-basis was almost perfect.
-
-Full measurements and caveats are in [docs/RESULTS.md](docs/RESULTS.md).
-
-## v3: toward sequence models
-
-Version 3 contains two new, separate falsification experiments:
-
-- **Compact Causal QSBF (CQSBF):** a compact learned quadratic sketch and an
-  online fixed-rank shared basis. It is causal, position-aware, uses a fixed
-  generation state, and does not construct an `N x N` token matrix. It is
-  trained beside ordinary causal attention and causal linear attention on
-  associative recall, selective copy, and induction.
-- **Reliable VDCF (R-VDCF):** an `O(N)` local/dilated/hash factor topology with
-  persistent trust, a learned reliability gate, capped influence, aging,
-  exploration, and incremental violation refresh. It compares reliable sparse,
-  naive sparse, and dense execution and counts their actual factor work.
-
-These experiments implement the proposed improvements; no v3 result is claimed
-until the scripts are run. Design details and interpretation rules are in
-[docs/V3_EXPERIMENTS.md](docs/V3_EXPERIMENTS.md).
+This prototype does not yet produce a wall-clock speedup: the scalar top-k
+scan is still `O(E)`, and gather/scatter plus Python/kernel overhead outweigh
+the saved small MLP calls at this scale. The demonstrated result is selective
+computation and length transfer, not optimized runtime.
 
 ## Run
 
-Requirements:
-
-- Python 3.10+
-- PyTorch 2.x
-
-Install PyTorch using the build appropriate for your CUDA driver. Run the new
-CQSBF experiment:
+Requirements: Python 3.10+ and PyTorch 2.1+.
 
 ```bash
-python experiments/v3/compact_causal_qsbf_experiment.py \
-  --models all --device cuda --amp
+python -m pip install -r requirements.txt
+python rvdcf_experiment.py --smoke --device cuda
+python rvdcf_experiment.py --device cuda --amp
 ```
 
-Run the reliable VDCF experiment:
+The full run trains for 3,000 steps and writes `results.json` plus `rvdcf.pt`
+to `rvdcf_runs/`. Use `--output-dir`, `--steps`, `--seed`, `--batch-size`, or
+`--eval-nodes 64,256,1024` to override the defaults.
 
-```bash
-python experiments/v3/reliable_vdcf_experiment.py \
-  --device cuda --amp
-```
+## Where it may be useful
 
-Quick correctness runs:
+- error-correcting codes and noisy factor graphs;
+- SAT/CSP, graph coloring, scheduling, and structured repair;
+- probabilistic graphical models and sensor fusion;
+- program analysis, type constraints, and dataflow propagation.
 
-```bash
-python experiments/v3/compact_causal_qsbf_experiment.py --smoke --device cuda
-python experiments/v3/reliable_vdcf_experiment.py --smoke --device cuda
-```
+It is a poor fit when the interactions are unknown, mostly dense, or require
+content-addressed retrieval—the jobs attention currently handles well.
 
-The original feasibility studies remain under `experiments/v1/` and
-`experiments/v2/`. Generated results and checkpoints are ignored by Git.
+## Status and novelty boundary
 
-## Research status and novelty
+This is research prototype code with one synthetic task and one seed. The
+individual ingredients—factor graphs, residual scheduling, learned message
+updates, gating, and exploration—have related prior work. The proposal being
+tested is their architectural combination: make reliability-aware,
+violation-driven sparse execution the central computation rather than an
+optimization around a dense network. A broad priority or “first” claim is not
+made here.
 
-These are working architecture names and original experimental compositions,
-not a claim that every primitive is new.
-
-- VDCF overlaps with residual scheduling in belief propagation and with neural
-  correction of factor-graph messages. The candidate contribution is the
-  complete combination: violation is the compute scheduler, the learned local
-  correction is the main state-transition rule, and sparse execution is the
-  architecture rather than an optimization around a classical solver.
-- QSBF overlaps with bilinear features, covariance pooling, spectral methods,
-  and permutation-invariant set models. Its candidate contribution is using
-  the eigenspace of a lifted global statistic as the exclusive communication
-  field for per-element updates, including tasks deliberately invisible to
-  first- and second-order baselines in the original coordinates.
-
-Before using words such as *novel* or *first*, this needs a systematic
-literature review and direct experimental comparisons. See
-[docs/NOVELTY.md](docs/NOVELTY.md).
-
-## Next milestones
-
-1. Run the two v3 smoke tests and then their full single-seed suites.
-2. Use the v3 measurements to optimize the failed mechanism rather than repeat
-   unchanged runs: CQSBF basis/sketch capacity or R-VDCF trust/scheduler policy.
-3. Move CQSBF from synthetic language-like tasks to a tiny next-token corpus
-   only if it competes with attention on recall, copy, and induction.
-4. Replace R-VDCF's global scalar top-k scan with a true heap/bucket queue if
-   sparse factor evaluations produce an accuracy/compute advantage.
-5. Build the hybrid block only after both improved mechanisms pass separately.
-
-The detailed sequence and pass/fail criteria are in
-[docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Repository layout
-
-```text
-experiments/v1/    Original feasibility prototype
-experiments/v2/    Matched-moment and sparse-factor feasibility tests
-experiments/v3/    Compact causal QSBF and reliable event-driven VDCF
-docs/              Architecture, novelty, results, and roadmap notes
-results/           Machine-readable recorded summary
-```
-
-## Reproducibility note
-
-The checked-in result summary records one CUDA run with seed 0. It is evidence
-of feasibility, not a benchmark result. Model checkpoints and generated output
-directories are intentionally ignored.
-
-## License
-
-No license has been selected yet. Until one is added, normal copyright rules
-apply; the source is visible for review but no broad reuse permission is
-granted.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the exact mechanism and
+[RESULTS.md](RESULTS.md) for all reported measurements and the next tests.

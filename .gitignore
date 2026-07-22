@@ -8,8 +8,4 @@ venv/
 .idea/
 .vscode/
 .DS_Store
-two_architecture_runs/
-two_architecture_runs_v2/
-cqsbf_v3_runs/
-reliable_vdcf_v3_runs/
-results/generated/
+rvdcf_runs/

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Experiment v3-B: Reliable Event-Driven Violation Constraint Field (R-VDCF).
+R-VDCF: Reliable Event-Driven Violation-Driven Constraint Field.
 
 The model reconstructs categorical sequences from sparse anchors and modular
 constraints.  Its factor graph is O(N): local, dilated, and deterministic hash
@@ -18,9 +18,9 @@ sparse execution, naive sparse execution, and dense execution using the same
 trained correction rule.
 
 Examples:
-  python reliable_vdcf_experiment.py --smoke --device cuda
-  python reliable_vdcf_experiment.py --device cuda
-  python reliable_vdcf_experiment.py --steps 4000 --amp
+  python rvdcf_experiment.py --smoke --device cuda
+  python rvdcf_experiment.py --device cuda
+  python rvdcf_experiment.py --steps 4000 --amp
 """
 
 from __future__ import annotations
@@ -62,6 +62,15 @@ def autocast_context(device: torch.device, enabled: bool):
     if enabled and device.type == "cuda":
         return torch.autocast(device_type="cuda", dtype=torch.float16)
     return nullcontext()
+
+
+def make_grad_scaler(device: torch.device, enabled: bool):
+    """Use the current AMP API while remaining compatible with older PyTorch."""
+    use_amp = enabled and device.type == "cuda"
+    try:
+        return torch.amp.GradScaler("cuda", enabled=use_amp)
+    except (AttributeError, TypeError):
+        return torch.cuda.amp.GradScaler(enabled=use_amp)
 
 
 def masked_mean(value: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -594,7 +603,7 @@ def train_model(
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay
     )
-    scaler = torch.cuda.amp.GradScaler(enabled=amp and device.type == "cuda")
+    scaler = make_grad_scaler(device, amp)
     history = []
     started = time.perf_counter()
     for step in range(1, cfg.steps + 1):
@@ -660,7 +669,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--eval-nodes", type=parse_nodes, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
-    parser.add_argument("--output-dir", type=Path, default=Path("reliable_vdcf_v3_runs"))
+    parser.add_argument("--output-dir", type=Path, default=Path("rvdcf_runs"))
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     return parser.parse_args()
@@ -734,7 +743,7 @@ def main() -> None:
     }
     torch.save(
         {"model": model.state_dict(), "config": asdict(cfg)},
-        args.output_dir / "reliable_vdcf_v3.pt",
+        args.output_dir / "rvdcf.pt",
     )
     result_path = args.output_dir / "results.json"
     result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
